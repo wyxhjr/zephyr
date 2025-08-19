@@ -31,6 +31,8 @@ void soc_interrupt_init(void);
 void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz,
 		    arch_cpustart_t fn, void *arg)
 {
+	printk("RISCV SMP: arch_cpu_start called for CPU %d\n", cpu_num);
+	
 	riscv_cpu_init[cpu_num].fn = fn;
 	riscv_cpu_init[cpu_num].arg = arg;
 
@@ -44,15 +46,22 @@ void arch_cpu_start(int cpu_num, k_thread_stack_t *stack, int sz,
 	}
 #endif
 
+	printk("RISCV SMP: Setting wake flag for CPU %d (hartid=%d)\n", 
+	       cpu_num, _kernel.cpus[cpu_num].arch.hartid);
+	       
 	while (riscv_cpu_boot_flag == 0U) {
 		riscv_cpu_wake_flag = _kernel.cpus[cpu_num].arch.hartid;
 	}
+	
+	printk("RISCV SMP: CPU %d boot completed\n", cpu_num);
 }
 
 void arch_secondary_cpu_init(int hartid)
 {
 	unsigned int i;
 	unsigned int cpu_num = 0;
+	
+	printk("RISCV SMP: Secondary CPU init called for hartid %d\n", hartid);
 
 	for (i = 0; i < CONFIG_MP_MAX_NUM_CPUS; i++) {
 		if (_kernel.cpus[i].arch.hartid == hartid) {

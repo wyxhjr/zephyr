@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: Apache-2.0
+title: RISC-V APLIC (Advanced Platform-Level Interrupt Controller) - Direct Mode
+
+description: |
+  RISC-V APLIC interrupt controller in direct delivery mode (non-MSI).
+  Provides platform-level external interrupt sources to harts. Consumers
+  describe interrupts as <hwirq flags>, where hwirq starts at 1.
+
+compatible: "riscv,aplic"
+
+include: [base.yaml,interrupt-controller.yaml]
+
+properties:
+
+  reg:
+    required: true
+    description: Base address and size of the APLIC register block
+
+  "#interrupt-cells":
+    const: 2
+
+  riscv,num-sources:
+    type: int
+    required: true
+    description: Number of interrupt sources implemented by this APLIC
+
+  interrupts:
+    required: false
+    description: |
+      Parent external interrupt(s) for each IDC. Typically one per hart,
+      referencing the local CPU interrupt controller (e.g. S-External IRQ).
+      For first-stage single-hart bring-up this may be omitted.
+
+  interrupt-parent:
+    required: false
+    description: Parent interrupt controller for the interrupts property
+
+  riscv,hart-indexes:
+    type: array
+    required: false
+    description: |
+      Optional mapping of logical IDC index to hardware hart index.
+      Length should match the number of entries in 'interrupts' when provided.
+
+  msi-parent:
+    type: array
+    required: false
+    description: MSI parent for MSI mode (not used in direct mode)
+
+  status:
+    required: false
+
+interrupt-cells:
+  - irq
+  - flags

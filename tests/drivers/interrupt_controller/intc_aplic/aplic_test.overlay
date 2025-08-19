@@ -1,0 +1,20 @@
+/ {
+	soc {
+		aplic0: interrupt-controller@c000000 {
+			compatible = "riscv,aplic";
+			reg = <0xc000000 0x1000000>;
+			interrupt-controller;
+			#interrupt-cells = <1>;
+			riscv,ndev = <1024>;
+			nr-irqs = <1024>;
+			max-priority = <7>;
+			hart-contexts = <0>, <1>, <2>, <3>;
+			interrupts = <1>;
+		};
+	};
+};
+
+
+
+
+

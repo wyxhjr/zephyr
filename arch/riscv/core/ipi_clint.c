@@ -6,6 +6,7 @@
 
 #include <ipi.h>
 #include <ksched.h>
+#include <kernel_internal.h>
 
 #include <zephyr/kernel.h>
 
@@ -93,9 +94,14 @@ void arch_spin_relax(void)
 
 int arch_smp_init(void)
 {
+	printk("RISCV SMP: arch_smp_init called\n");
 
 	IRQ_CONNECT(RISCV_IRQ_MSOFT, 0, sched_ipi_handler, NULL, 0);
 	irq_enable(RISCV_IRQ_MSOFT);
+
+	/* Start secondary CPUs */
+	printk("RISCV SMP: Starting secondary CPUs\n");
+	z_smp_init();
 
 	return 0;
 }

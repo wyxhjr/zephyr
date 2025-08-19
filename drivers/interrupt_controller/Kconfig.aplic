@@ -1,0 +1,42 @@
+# APLIC (RISC-V Advanced Platform-Level Interrupt Controller) - Direct mode
+
+menu "RISC-V APLIC (Direct Mode)"
+	depends on RISCV
+
+config RISCV_APLIC_DIRECT
+	bool "Enable RISC-V APLIC direct-mode interrupt controller"
+	select MULTI_LEVEL_INTERRUPTS
+	select 2ND_LEVEL_INTERRUPTS
+	help
+	  Enable support for the RISC-V APLIC in direct delivery mode (no MSI).
+	  This first-stage driver initializes DOMAINCFG/IDC and performs CLAIMI
+	  loop dispatch from the parent external interrupt.
+
+
+if RISCV_APLIC_DIRECT
+
+config APLIC_PARENT_IRQ
+	int "APLIC parent external IRQ number"
+	default 9
+	range 0 255
+	help
+	  Parent external interrupt number used to enter the APLIC chained handler.
+	  For S-mode on QEMU virt this is typically 9 (Supervisor external).
+	  If you run in M-mode, set this to 11 (Machine external).
+
+config APLIC_NUM_SOURCES
+	int "Number of APLIC interrupt sources"
+	default 64
+	range 1 1024
+	help
+	  Number of interrupt sources implemented by the APLIC instance in your SoC.
+
+config APLIC_DEFAULT_PRIORITY
+	int "Default per-source priority (0..255)"
+	default 1
+	range 0 255
+	help
+	  Initial priority written into APLIC TARGET registers. Lower is higher priority.
+
+endif # RISCV_APLIC_DIRECT
+endmenu

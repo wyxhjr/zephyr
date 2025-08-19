@@ -11,9 +11,15 @@
  */
 #include <zephyr/irq.h>
 #include <zephyr/irq_multilevel.h>
+#include <zephyr/kernel.h>
 
 #include <zephyr/drivers/interrupt_controller/riscv_clic.h>
-#include <zephyr/drivers/interrupt_controller/riscv_plic.h>
+
+#ifdef CONFIG_RISCV_APLIC_DIRECT
+#include <zephyr/drivers/interrupt_controller/riscv_aplic.h>
+#endif
+
+#include <zephyr/arch/riscv/csr.h>
 
 #if defined(CONFIG_RISCV_HAS_CLIC)
 
@@ -46,20 +52,18 @@ void z_riscv_irq_vector_set(unsigned int irq)
 #endif
 }
 
-#else /* PLIC + HLINT/CLINT or HLINT/CLINT only */
+#elif defined(CONFIG_RISCV_APLIC_DIRECT) /* APLIC only */
 
 void arch_irq_enable(unsigned int irq)
 {
 	uint32_t mie;
 
-#if defined(CONFIG_RISCV_HAS_PLIC)
 	unsigned int level = irq_get_level(irq);
 
 	if (level == 2) {
-		riscv_plic_irq_enable(irq);
+		riscv_aplic_irq_enable(irq);
 		return;
 	}
-#endif
 
 	/*
 	 * CSR mie register is updated using atomic instruction csrrs
@@ -72,14 +76,12 @@ void arch_irq_disable(unsigned int irq)
 {
 	uint32_t mie;
 
-#if defined(CONFIG_RISCV_HAS_PLIC)
 	unsigned int level = irq_get_level(irq);
 
 	if (level == 2) {
-		riscv_plic_irq_disable(irq);
+		riscv_aplic_irq_disable(irq);
 		return;
 	}
-#endif
 
 	/*
 	 * Use atomic instruction csrrc to disable device interrupt in mie CSR.
@@ -92,29 +94,66 @@ int arch_irq_is_enabled(unsigned int irq)
 {
 	uint32_t mie;
 
-#if defined(CONFIG_RISCV_HAS_PLIC)
 	unsigned int level = irq_get_level(irq);
 
 	if (level == 2) {
-		return riscv_plic_irq_is_enabled(irq);
+		return riscv_aplic_irq_is_enabled(irq);
 	}
-#endif
 
 	mie = csr_read(mie);
 
 	return !!(mie & (1 << irq));
 }
 
-#if defined(CONFIG_RISCV_HAS_PLIC)
 void z_riscv_irq_priority_set(unsigned int irq, unsigned int prio, uint32_t flags)
 {
 	unsigned int level = irq_get_level(irq);
 
 	if (level == 2) {
-		riscv_plic_set_priority(irq, prio);
+		riscv_aplic_set_priority(irq, prio);
 	}
 }
-#endif /* CONFIG_RISCV_HAS_PLIC */
+
+#else /* HLINT/CLINT only */
+
+void arch_irq_enable(unsigned int irq)
+{
+	uint32_t mie;
+
+	/*
+	 * CSR mie register is updated using atomic instruction csrrs
+	 * (atomic read and set bits in CSR register)
+	 */
+	mie = csr_read_set(mie, 1 << irq);
+}
+
+void arch_irq_disable(unsigned int irq)
+{
+	uint32_t mie;
+
+	/*
+	 * Use atomic instruction csrrc to disable device interrupt in mie CSR.
+	 * (atomic read and clear bits in CSR register)
+	 */
+	mie = csr_read_clear(mie, 1 << irq);
+}
+
+int arch_irq_is_enabled(unsigned int irq)
+{
+	uint32_t mie;
+
+	mie = csr_read(mie);
+
+	return !!(mie & (1 << irq));
+}
+
+void z_riscv_irq_priority_set(unsigned int irq, unsigned int prio, uint32_t flags)
+{
+	ARG_UNUSED(irq);
+	ARG_UNUSED(prio);
+	ARG_UNUSED(flags);
+}
+
 #endif /* CONFIG_RISCV_HAS_CLIC */
 
 #if defined(CONFIG_RISCV_SOC_INTERRUPT_INIT)

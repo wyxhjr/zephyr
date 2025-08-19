@@ -26,7 +26,7 @@
 
 	uart0: uart@10000000 {
 		interrupts = < 0x0a 1 >;
-		interrupt-parent = < &plic >;
+		interrupt-parent = < &aplic >;
 		clock-frequency = < 0x384000 >;
 		reg = < 0x10000000 0x100 >;
 		compatible = "ns16550";
@@ -38,6 +38,7 @@
 		#size-cells = < 0x00 >;
 
 		cpu@0 {
+			phandle = <0x0f>;
 			device_type = "cpu";
 			reg = < 0x00 >;
 			status = "okay";
@@ -52,6 +53,7 @@
 		};
 
 		cpu@1 {
+			phandle = <0x0d>;
 			device_type = "cpu";
 			reg = < 0x01 >;
 			status = "okay";
@@ -66,6 +68,7 @@
 		};
 
 		cpu@2 {
+			phandle = <0x0b>;
 			device_type = "cpu";
 			reg = < 0x02 >;
 			status = "okay";
@@ -80,6 +83,7 @@
 		};
 
 		cpu@3 {
+			phandle = <0x09>;
 			device_type = "cpu";
 			reg = < 0x03 >;
 			status = "okay";
@@ -94,6 +98,7 @@
 		};
 
 		cpu@4 {
+			phandle = <0x07>;
 			device_type = "cpu";
 			reg = < 0x04 >;
 			status = "okay";
@@ -108,6 +113,7 @@
 		};
 
 		cpu@5 {
+			phandle = <0x05>;
 			device_type = "cpu";
 			reg = < 0x05 >;
 			status = "okay";
@@ -122,6 +128,7 @@
 		};
 
 		cpu@6 {
+			phandle = <0x03>;
 			device_type = "cpu";
 			reg = < 0x06 >;
 			status = "okay";
@@ -136,6 +143,7 @@
 		};
 
 		cpu@7 {
+			phandle = <0x01>;
 			device_type = "cpu";
 			reg = < 0x07 >;
 			status = "okay";
@@ -161,24 +169,17 @@
 		compatible = "simple-bus";
 		ranges;
 
-		plic: interrupt-controller@c000000 {
-			riscv,max-priority = <7>;
-			riscv,ndev = < 1024 >;
-			reg = <0x0c000000 0x04000000>;
-			interrupts-extended = <
-				&hlic0 0x0b &hlic0 0x09
-				&hlic1 0x0b &hlic1 0x09
-				&hlic2 0x0b &hlic2 0x09
-				&hlic3 0x0b &hlic3 0x09
-				&hlic4 0x0b &hlic4 0x09
-				&hlic5 0x0b &hlic5 0x09
-				&hlic6 0x0b &hlic6 0x09
-				&hlic7 0x0b &hlic7 0x09
-			>;
-			interrupt-controller;
-			compatible = "sifive,plic-1.0.0";
-			#address-cells = < 0x00 >;
-			#interrupt-cells = < 0x02 >;
+        aplic:interrupt-controller@c000000 {
+            phandle = <0x11>;
+            riscv,num-sources = <0x60>;
+            reg = <0xc000000 0x8000>;
+			interrupts-extended = <0x10 0x0b 0x0e 0x0b 0x0c 0x0b 0x0a 0x0b 0x08 0x0b 0x06 0x0b 0x04 0x0b 0x02 0x0b>;
+            interrupt-controller;
+            #interrupt-cells = <0x02>;
+            #address-cells = <0x00>;
+            compatible = "qemu,aplic", "riscv,aplic";
+            interrupts = <1>;
+            interrupt-parent = <&hlic0>;
 		};
 
 		clint: clint@2000000 {

@@ -1,0 +1,13 @@
+# Copyright (c) 2024 Zephyr Contributors
+# SPDX-License-Identifier: Apache-2.0
+
+config TEST_INTC_APLIC
+	bool "APLIC interrupt controller test"
+	depends on APLIC
+	help
+	  This option enables the APLIC interrupt controller test.
+
+
+
+
+

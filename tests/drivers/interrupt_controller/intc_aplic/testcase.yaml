@@ -1,0 +1,11 @@
+common:
+  platform_allow: qemu_riscv64
+  tags:
+    - drivers
+    - interrupt
+    - aplic
+
+tests:
+  drivers.interrupt_controller.intc_aplic:
+    extra_args:
+      DTC_OVERLAY_FILE="./aplic_test.overlay"

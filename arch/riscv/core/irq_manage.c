@@ -11,8 +11,8 @@
 #include <zephyr/irq_multilevel.h>
 #include <zephyr/sw_isr_table.h>
 
-#ifdef CONFIG_RISCV_HAS_PLIC
-#include <zephyr/drivers/interrupt_controller/riscv_plic.h>
+#ifdef CONFIG_RISCV_APLIC_DIRECT
+#include <zephyr/drivers/interrupt_controller/riscv_aplic.h>
 #endif
 
 LOG_MODULE_DECLARE(os, CONFIG_KERNEL_LOG_LEVEL);
@@ -34,12 +34,12 @@ FUNC_NORETURN void z_irq_spurious(const void *unused)
 	mcause &= CONFIG_RISCV_MCAUSE_EXCEPTION_MASK;
 
 	LOG_ERR("Spurious interrupt detected! IRQ: %ld", mcause);
-#if defined(CONFIG_RISCV_HAS_PLIC)
+#if defined(CONFIG_RISCV_APLIC_DIRECT)
 	if (mcause == RISCV_IRQ_MEXT) {
-		unsigned int save_irq = riscv_plic_get_irq();
-		const struct device *save_dev = riscv_plic_get_dev();
+		unsigned int save_irq = riscv_aplic_get_irq();
+		const struct device *save_dev = riscv_aplic_get_dev();
 
-		LOG_ERR("PLIC interrupt line causing the IRQ: %d (%p)", save_irq, save_dev);
+		LOG_ERR("APLIC interrupt line causing the IRQ: %d (%p)", save_irq, save_dev);
 	}
 #endif
 	z_riscv_fatal_error(K_ERR_SPURIOUS_IRQ, NULL);
@@ -53,7 +53,7 @@ int arch_irq_connect_dynamic(unsigned int irq, unsigned int priority,
 {
 	z_isr_install(irq + CONFIG_RISCV_RESERVED_IRQ_ISR_TABLES_OFFSET, routine, parameter);
 
-#if defined(CONFIG_RISCV_HAS_PLIC) || defined(CONFIG_RISCV_HAS_CLIC)
+#if defined(CONFIG_RISCV_HAS_CLIC) || defined(CONFIG_RISCV_APLIC_DIRECT)
 	z_riscv_irq_priority_set(irq, priority, flags);
 #else
 	ARG_UNUSED(flags);
