@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: Apache-2.0
+title: QEMU RISC-V IMSICS (Incoming MSI Controller - Supervisor Level)
+
+description: |
+  QEMU RISC-V IMSICS interrupt controller following the RISC-V AIA specification.
+  This is a QEMU-specific implementation of the RISC-V IMSICS for supervisor level.
+
+compatible: "qemu,imsic"
+
+include: [base.yaml,interrupt-controller.yaml]
+
+properties:
+
+  reg:
+    required: true
+    description: |
+      Base address and size of the IMSICS register block.
+      The size should be at least 0x8000 bytes to cover all registers.
+
+  "#interrupt-cells":
+    const: 0
+    description: |
+      Should be 0 for IMSICS as it's an MSI controller.
+
+  riscv,num-ids:
+    type: int
+    required: false
+    description: |
+      Number of interrupt identities supported by this IMSICS.
+      Must be between 0 and 255. Defaults to 255.
+
+  riscv,hart-id:
+    type: int
+    required: false
+    description: |
+      Hart ID associated with this IMSICS instance.
+      If not specified, defaults to the instance number.
+
+  riscv,guest-id:
+    type: int
+    required: false
+    description: |
+      Guest ID for virtualization support.
+      Defaults to 0 if not specified.
+
+  riscv,max-priority:
+    type: int
+    required: false
+    description: |
+      Maximum interrupt priority supported.
+      Must be between 0 and 7. Defaults to 7.
+
+  riscv,big-endian:
+    type: boolean
+    required: false
+    description: |
+      If true, registers are accessed in big-endian byte order.
+      Defaults to false (little-endian).
+
+  interrupts-extended:
+    required: false
+    description: |
+      The external interrupt lines that this IMSICS connects to.
+      Typically the S-External interrupt from each local CPU.
+
+  msi-controller:
+    type: boolean
+    required: true
+    description: |
+      Indicates that this device is an MSI controller.
+
+  status:
+    required: false
+
+

@@ -30,6 +30,11 @@ int riscv_aplic_irq_get_trigger_type(uint32_t irq);
 int riscv_aplic_hart_set_threshold(uint32_t hart_id, uint32_t threshold);
 uint32_t riscv_aplic_hart_get_threshold(uint32_t hart_id);
 
+/* MSI mode support */
+bool riscv_aplic_is_msi_mode_enabled(void);
+int riscv_aplic_configure_source_msi(uint32_t irq, uint32_t target_hart, uint32_t target_guest);
+int riscv_aplic_send_msi(uint32_t target_hart, uint32_t target_guest, uint32_t irq);
+
 /* Statistics and diagnostics */
 struct riscv_aplic_irq_stats {
 	uint32_t count;           /* Interrupt count */

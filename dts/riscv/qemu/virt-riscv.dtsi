@@ -179,8 +179,26 @@
             #address-cells = <0x00>;
             compatible = "qemu,aplic", "riscv,aplic";
             interrupts = <1>;
-            interrupt-parent = <&hlic0>;
+			msi-parent = <0x12>;
 		};
+
+
+
+        imsic:interrupt-controller@24000000 {
+            phandle = <0x12>;
+            riscv,num-ids = <0xff>;
+            riscv,hart-id = <0x00>;
+            riscv,guest-id = <0x00>;
+            riscv,max-priority = <0x07>;
+            riscv,big-endian;
+            reg = <0x24000000 0x8000>;
+            interrupts-extended = <0x10 0x0b 0x0e 0x0b 0x0c 0x0b 0x0a 0x0b 0x08 0x0b 0x06 0x0b 0x04 0x0b 0x02 0x0b>;
+            msi-controller;
+            interrupt-controller;
+            #interrupt-cells = <0x00>;
+            compatible = "qemu,imsic", "riscv,imsic";
+        };
+
 
 		clint: clint@2000000 {
 			compatible = "sifive,clint0";

@@ -108,6 +108,10 @@ struct aplic_data {
 	struct aplic_irq_info irq_info[1024]; /* Per-IRQ information */
 	uint32_t total_interrupts;            /* Total interrupt count */
 	uint32_t hart_thresholds[CONFIG_MP_MAX_NUM_CPUS]; /* Per-Hart thresholds */
+	/* MSI mode support */
+	bool msi_mode_enabled;
+	const struct device *imsic_devices[CONFIG_MP_MAX_NUM_CPUS];
+	uint32_t msi_base_eid;
 };
 
 static const struct device *save_dev[CONFIG_MP_MAX_NUM_CPUS];
@@ -724,6 +728,124 @@ static void aplic_isr(const struct device *dev)
 	}
 }
 
+/* ============================================================================
+ * MSI Mode Support Functions
+ * ============================================================================ */
+
+/* Find IMSIC devices for MSI mode */
+static int aplic_find_imsic_devices(const struct device *dev)
+{
+	const struct aplic_config *config = dev->config;
+	struct aplic_data *data = dev->data;
+	int found_count = 0;
+	
+	/* Search for IMSIC devices in device tree */
+	for (int i = 0; i < CONFIG_MP_MAX_NUM_CPUS; i++) {
+		/* Try to find IMSIC device for this hart */
+		char dev_name[32];
+		snprintf(dev_name, sizeof(dev_name), "imsic%d", i);
+		
+		const struct device *imsic_dev = device_get_binding(dev_name);
+		if (imsic_dev != NULL && device_is_ready(imsic_dev)) {
+			data->imsic_devices[i] = imsic_dev;
+			found_count++;
+			printk("APLIC: Found IMSIC device %s for hart %d\n", 
+			       imsic_dev->name, i);
+		} else {
+			data->imsic_devices[i] = NULL;
+		}
+	}
+	
+	return found_count;
+}
+
+/* Configure APLIC for MSI mode */
+static int aplic_configure_msi_mode(const struct device *dev)
+{
+	const struct aplic_config *config = dev->config;
+	struct aplic_data *data = dev->data;
+	
+	/* Check if we have IMSIC devices */
+	if (aplic_find_imsic_devices(dev) == 0) {
+		printk("APLIC: No IMSIC devices found, cannot enable MSI mode\n");
+		return -ENODEV;
+	}
+	
+	/* Enable MSI mode in DOMAINCFG */
+	uint32_t domaincfg_value = (1 << 8) | (1 << 2); /* IE + DM (MSI mode) */
+	printk("APLIC: Enabling MSI mode, writing 0x%08X to DOMAINCFG\n", domaincfg_value);
+	aplic_write(dev, config->base + APLIC_DOMAINCFG, domaincfg_value);
+	
+	/* Verify MSI mode is enabled */
+	uint32_t domaincfg_readback = aplic_read(dev, config->base + APLIC_DOMAINCFG);
+	if ((domaincfg_readback & (1 << 2)) == 0) {
+		printk("APLIC: ERROR - Failed to enable MSI mode\n");
+		return -EIO;
+	}
+	
+	data->msi_mode_enabled = true;
+	data->msi_base_eid = 0; /* Start EIDs from 0 */
+	
+	printk("APLIC: MSI mode enabled successfully\n");
+	return 0;
+}
+
+/* Send MSI through IMSIC */
+static int aplic_send_msi(const struct device *dev, uint32_t target_hart, 
+			  uint32_t target_guest, uint32_t irq_id)
+{
+	struct aplic_data *data = dev->data;
+	
+	if (!data->msi_mode_enabled) {
+		return -ENOTSUP;
+	}
+	
+	if (target_hart >= CONFIG_MP_MAX_NUM_CPUS || 
+	    data->imsic_devices[target_hart] == NULL) {
+		return -EINVAL;
+	}
+	
+	/* Calculate EID for this interrupt */
+	uint32_t eid = data->msi_base_eid + irq_id;
+	
+	/* Use IMSIC API to send MSI */
+	// TODO: Implement IMSIC MSI sending
+	// For now, we'll just set the interrupt pending in the target IMSIC
+	ARG_UNUSED(data->imsic_devices[target_hart]);
+	
+	/* This is a simplified implementation - in a real system,
+	 * the APLIC would generate an MSI write to the IMSIC */
+	printk("APLIC: Would send MSI EID %u to hart %u (guest %u)\n", 
+	       eid, target_hart, target_guest);
+	
+	return 0;
+}
+
+/* Configure source for MSI mode */
+static int aplic_configure_source_msi(const struct device *dev, uint32_t irq_id, 
+				     uint32_t target_hart, uint32_t target_guest)
+{
+	struct aplic_data *data = dev->data;
+	
+	if (!data->msi_mode_enabled) {
+		return -ENOTSUP;
+	}
+	
+	/* In MSI mode, SOURCECFG is configured differently */
+	mem_addr_t sourcecfg_addr = get_sourcecfg_addr(dev, irq_id);
+	
+	/* For MSI mode, we need to set the target hart and guest in SOURCECFG */
+	uint32_t sourcecfg_value = (target_hart << 16) | (target_guest << 8) | 
+				   APLIC_SOURCECFG_SM_LEVEL_HIGH;
+	
+	aplic_write(dev, sourcecfg_addr, sourcecfg_value);
+	
+	printk("APLIC: Configured IRQ %u for MSI to hart %u, guest %u\n", 
+	       irq_id, target_hart, target_guest);
+	
+	return 0;
+}
+
 /* Device initialization */
 static int aplic_init(const struct device *dev)
 {
@@ -773,6 +895,20 @@ static int aplic_init(const struct device *dev)
 		printk("APLIC: WARNING - IE bit could not be enabled\n");
 	}
 
+	/* Initialize MSI mode support */
+	data->msi_mode_enabled = false;
+	for (i = 0; i < CONFIG_MP_MAX_NUM_CPUS; i++) {
+		data->imsic_devices[i] = NULL;
+	}
+	data->msi_base_eid = 0;
+	
+	/* Try to detect and configure MSI mode */
+	if (aplic_configure_msi_mode(dev) == 0) {
+		printk("APLIC: MSI mode configured successfully\n");
+	} else {
+		printk("APLIC: MSI mode not available, using direct mode\n");
+	}
+
 	/* Initialize IRQ information and configure source configuration */
 	for (i = 0; i < config->nr_irqs; i++) {
 		mem_addr_t sourcecfg_addr = get_sourcecfg_addr(dev, i);
@@ -787,8 +923,15 @@ static int aplic_init(const struct device *dev)
 			data->irq_info[i].enabled = false;
 		}
 		
-		/* Set source to level-triggered high by default */
-		aplic_write(dev, sourcecfg_addr, APLIC_SOURCECFG_SM_LEVEL_HIGH);
+		/* Configure source based on mode */
+		if (data->msi_mode_enabled) {
+			/* In MSI mode, configure for MSI delivery */
+			/* Default to hart 0, guest 0 */
+			aplic_configure_source_msi(dev, i, 0, 0);
+		} else {
+			/* In direct mode, set source to level-triggered high by default */
+			aplic_write(dev, sourcecfg_addr, APLIC_SOURCECFG_SM_LEVEL_HIGH);
+		}
 	}
 	
 	/* Initialize total interrupt counter */
@@ -838,11 +981,66 @@ static int aplic_init(const struct device *dev)
 	\
 	static void aplic_irq_config_func_##n(void) \
 	{ \
-		IRQ_CONNECT(DT_INST_IRQN(n), 0, aplic_isr, DEVICE_DT_INST_GET(n), 0); \
-		irq_enable(DT_INST_IRQN(n)); \
+		/* Temporarily disable APLIC IRQ to test IMSIC */ \
+		/* IRQ_CONNECT(DT_INST_IRQN(n), 0, aplic_isr, DEVICE_DT_INST_GET(n), 0); */ \
+		/* irq_enable(DT_INST_IRQN(n)); */ \
 	}
 
 /* Generate device instances from device tree */
 DT_INST_FOREACH_STATUS_OKAY(APLIC_INIT)
+
+/* ============================================================================
+ * Public API Functions
+ * ============================================================================ */
+
+/* MSI mode support */
+bool riscv_aplic_is_msi_mode_enabled(void)
+{
+	const struct device *dev = aplic_get_dev();
+	struct aplic_data *data;
+	
+	if (dev == NULL) {
+		return false;
+	}
+	
+	data = dev->data;
+	return data->msi_mode_enabled;
+}
+
+int riscv_aplic_configure_source_msi(uint32_t irq, uint32_t target_hart, uint32_t target_guest)
+{
+	const struct device *dev = aplic_get_dev();
+	struct aplic_data *data;
+	
+	if (dev == NULL) {
+		return -ENODEV;
+	}
+	
+	data = dev->data;
+	
+	if (!data->msi_mode_enabled) {
+		return -ENOTSUP;
+	}
+	
+	return aplic_configure_source_msi(dev, irq, target_hart, target_guest);
+}
+
+int riscv_aplic_send_msi(uint32_t target_hart, uint32_t target_guest, uint32_t irq)
+{
+	const struct device *dev = aplic_get_dev();
+	struct aplic_data *data;
+	
+	if (dev == NULL) {
+		return -ENODEV;
+	}
+	
+	data = dev->data;
+	
+	if (!data->msi_mode_enabled) {
+		return -ENOTSUP;
+	}
+	
+	return aplic_send_msi(dev, target_hart, target_guest, irq);
+}
 
 

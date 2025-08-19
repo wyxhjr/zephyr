@@ -1,0 +1,44 @@
+# IMSIC (Incoming MSI Controller) configuration options
+
+menuconfig RISCV_IMSIC
+	bool "RISC-V IMSIC (Incoming MSI Controller) support"
+	depends on RISCV
+	help
+	  This option enables support for the RISC-V IMSIC (Incoming MSI Controller)
+	  following the RISC-V AIA specification. The IMSIC handles incoming MSI
+	  (Message Signaled Interrupts) and provides per-hart interrupt management.
+
+if RISCV_IMSIC
+
+config RISCV_IMSIC_INIT_PRIORITY
+	int "IMSIC initialization priority"
+	default 40
+	help
+	  IMSIC device driver initialization priority.
+	  This priority should be set after the APLIC driver initialization
+	  to ensure proper dependency ordering.
+
+config RISCV_IMSIC_MAX_EID
+	int "Maximum External Interrupt ID (EID)"
+	range 0 63
+	default 63
+	help
+	  Maximum External Interrupt ID (EID) supported by the IMSIC.
+	  This should match the hardware implementation.
+
+config RISCV_IMSIC_MAX_PRIORITY
+	int "Maximum interrupt priority"
+	range 0 7
+	default 7
+	help
+	  Maximum interrupt priority supported by the IMSIC.
+	  This should match the hardware implementation.
+
+config RISCV_IMSIC_DEBUG
+	bool "Enable IMSIC debug output"
+	default n
+	help
+	  Enable debug output for the IMSIC driver.
+	  This will print detailed information about IMSIC operations.
+
+endif # RISCV_IMSIC
