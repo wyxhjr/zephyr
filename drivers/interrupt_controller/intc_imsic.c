@@ -35,7 +35,7 @@ LOG_MODULE_REGISTER(imsic, CONFIG_INTC_LOG_LEVEL);
 #define IMSIC_MAX_ID			2048
 
 #define IMSIC_EIDELIVERY		0x70
-#define IMSIC_EITHRESHOLD		0x72
+#define IMSIC_EITHRESHOLD		0x74
 
 #define IMSIC_EIP0			0x80
 #define IMSIC_EIP63			0xbf
@@ -60,7 +60,7 @@ LOG_MODULE_REGISTER(imsic, CONFIG_INTC_LOG_LEVEL);
 #define IMSIC_EIE0_BE          0x140
 #define IMSIC_EIE63_BE         0x17F
 #define IMSIC_EIDELIVERY_BE    0x170
-#define IMSIC_EITHRESHOLD_BE   0x172
+#define IMSIC_EITHRESHOLD_BE   0x174
 
 /* IMSIC register bit fields */
 #define IMSIC_EIDELIVERY_MODE_MASK     0x3
@@ -249,20 +249,18 @@ static inline int imsic_set_delivery_mode(const struct device *dev, uint32_t mod
 	
 	data->delivery_mode = mode;
 	
-	/* Based on Linux kernel implementation, use CSR instructions instead of MMIO */
+	/* Use MMIO like Linux kernel for standard IMSIC registers */
 	uint32_t value = (config->hart_id << IMSIC_EIDELIVERY_HARTID_SHIFT) |
 			 (config->guest_id << IMSIC_EIDELIVERY_GUESTID_SHIFT) |
 			 (mode << IMSIC_EIDELIVERY_EID_SHIFT);
 	
-	LOG_DBG("IMSIC: Setting delivery mode 0x%08X using CSR method", value);
+	LOG_DBG("IMSIC: Setting delivery mode 0x%08X using MMIO", value);
 	
-	/* For QEMU IMSIC, we need to avoid direct MMIO access which causes crashes */
-	/* Instead, just maintain software state like Linux does for SW-file */
-	LOG_DBG("IMSIC: Using software-only delivery mode (QEMU MMIO limitation)");
-	LOG_DBG("IMSIC: Delivery mode 0x%08X stored in software state", value);
+	/* Write to hardware register using MMIO */
+	mem_addr_t delivery_addr = config->base + IMSIC_EIDELIVERY;
+	imsic_write_be(dev, delivery_addr, value);
 	
-	/* Note: In real hardware, this would use CSR_VSISELECT and CSR_VSIREG
-	 * but in QEMU user mode, we maintain software state only */
+	LOG_DBG("IMSIC: Delivery mode 0x%08X written to MMIO register 0x%08X", value, delivery_addr);
 	
 	return 0;
 }
@@ -279,16 +277,14 @@ static inline int imsic_set_threshold(const struct device *dev, uint32_t thresho
 	
 	data->eithreshold = threshold;
 	
-	/* Based on Linux kernel implementation, use CSR instructions instead of MMIO */
-	LOG_DBG("IMSIC: Setting threshold 0x%08X using CSR method", threshold);
+	/* Use MMIO like Linux kernel for standard IMSIC registers */
+	LOG_DBG("IMSIC: Setting threshold 0x%08X using MMIO", threshold);
 	
-	/* For QEMU IMSIC, we need to avoid direct MMIO access which causes crashes */
-	/* Instead, just maintain software state like Linux does for SW-file */
-	LOG_DBG("IMSIC: Using software-only threshold (QEMU MMIO limitation)");
-	LOG_DBG("IMSIC: Threshold 0x%08X stored in software state", threshold);
+	/* Write to hardware register using MMIO */
+	mem_addr_t threshold_addr = config->base + IMSIC_EITHRESHOLD;
+	imsic_write_be(dev, threshold_addr, threshold);
 	
-	/* Note: In real hardware, this would use CSR_VSISELECT and CSR_VSIREG
-	 * but in QEMU user mode, we maintain software state only */
+	LOG_DBG("IMSIC: Threshold 0x%08X written to MMIO register 0x%08X", threshold, threshold_addr);
 	
 	return 0;
 }
