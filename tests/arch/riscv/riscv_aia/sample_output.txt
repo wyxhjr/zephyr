@@ -1,0 +1,79 @@
+Sample output from a successful AIA test run:
+
+*** Booting Zephyr OS build v3.5.0 ***
+Running TESTSUITE riscv_aia
+===================================================================
+START - test_aia_device_availability
+AIA: Device found and ready: aia
+PASS - test_aia_device_availability in 0.001 seconds
+===================================================================
+START - test_aia_capabilities
+AIA: MSI supported: yes
+AIA: Direct mode supported: yes
+AIA: MSI enabled: yes
+AIA: Max harts: 4
+AIA: Max guests: 1
+PASS - test_aia_capabilities in 0.002 seconds
+===================================================================
+START - test_aia_statistics
+AIA: Statistics reset successful
+PASS - test_aia_statistics in 0.001 seconds
+===================================================================
+START - test_aia_irq_enable_disable
+AIA: Basic enable/disable test passed for IRQ 42
+PASS - test_aia_irq_enable_disable in 0.003 seconds
+===================================================================
+START - test_aia_irq_priority
+AIA: Priority test passed for IRQ 43
+PASS - test_aia_irq_priority in 0.002 seconds
+===================================================================
+START - test_aia_irq_pending
+AIA: Pending status test passed for IRQ 44
+PASS - test_aia_irq_pending in 0.002 seconds
+===================================================================
+START - test_aia_mode_detection
+AIA: Mode detection test passed - MSI mode: enabled
+PASS - test_aia_mode_detection in 0.001 seconds
+===================================================================
+START - test_aplic_integration
+APLIC: Integration test passed
+PASS - test_aplic_integration in 0.004 seconds
+===================================================================
+START - test_imsic_integration
+IMSIC: Integration test passed
+PASS - test_imsic_integration in 0.003 seconds
+===================================================================
+START - test_imsic_delivery_modes
+IMSIC: Delivery mode test passed
+PASS - test_imsic_delivery_modes in 0.002 seconds
+===================================================================
+START - test_aia_unified_management
+AIA: Unified management test passed
+PASS - test_aia_unified_management in 0.003 seconds
+===================================================================
+START - test_aia_performance
+AIA: Performance test - operations tracked: 2
+PASS - test_aia_performance in 0.004 seconds
+===================================================================
+START - test_aia_debug_mode
+AIA: Debug mode test passed
+PASS - test_aia_debug_mode in 0.001 seconds
+===================================================================
+
+===================================================================
+TESTSUITE riscv_aia succeeded
+
+------ TESTSUITE SUMMARY START ------
+
+SUITE: riscv_aia
+  - PASS: 12
+  - FAIL: 0
+  - SKIP: 0
+
+------ TESTSUITE SUMMARY END ------
+
+*** Zephyr OS build v3.5.0  ***
+===================================================================
+PROJECT EXECUTION SUCCESSFUL
+
+

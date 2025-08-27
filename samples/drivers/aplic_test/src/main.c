@@ -43,27 +43,16 @@ void main(void)
 	
 	LOG_INF("System stabilized, checking APLIC device...");
 	
-	/* Debug: Check if aplic_init was called */
-	LOG_INF("APLIC init debug flag: 0x%08X", aplic_init_called);
-	if (aplic_init_called == 0xDEADBEEF) {
-		LOG_INF("APLIC init was called successfully!");
+	/* Check if AIA driver is available */
+	const struct device *aia_dev = device_get_binding("aia");
+	if (aia_dev != NULL) {
+		LOG_INF("AIA driver is available!");
 	} else {
-		LOG_INF("APLIC init was NOT called (flag=0x%08X)", aplic_init_called);
+		LOG_INF("AIA driver is not available");
 	}
 	
-	/* Test if APLIC device exists - try multiple ways */
-	const struct device *aplic_dev = device_get_binding("aplic");
-	if (aplic_dev == NULL) {
-		aplic_dev = device_get_binding("aplic0");
-	}
-	if (aplic_dev == NULL) {
-		/* Try to get device by DT node label */
-		aplic_dev = DEVICE_DT_GET(DT_NODELABEL(aplic));
-	}
-	if (aplic_dev == NULL) {
-		/* Try to get device through APLIC API */
-		aplic_dev = riscv_aplic_get_dev();
-	}
+	/* Test APLIC device through proper API */
+	const struct device *aplic_dev = riscv_aplic_get_dev();
 	
 	if (aplic_dev != NULL) {
 		LOG_INF("APLIC device found: %s", aplic_dev->name);
@@ -97,7 +86,7 @@ void main(void)
 				if ((new_domaincfg & (1 << 8)) == 0) {
 					/* Try the safe write method from spec: (x << 24) | x */
 					LOG_INF("First attempt failed, trying safe write method...");
-					uint32_t safe_value = (1 << 8) | ((1 << 8) << 24); /* IE bit in both positions */
+					                                        uint32_t safe_value = (1UL << 8) | ((1UL << 8) << 24); /* IE bit in both positions */
 					LOG_INF("Safe write value: 0x%08X", safe_value);
 					aplic_write_reg(APLIC_DOMAINCFG_OFFSET, safe_value);
 					k_msleep(10);

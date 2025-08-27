@@ -29,6 +29,8 @@ zephyr_library_sources_ifdef(CONFIG_NPCX_MIWU               intc_miwu.c)
 zephyr_library_sources_ifdef(CONFIG_PLIC                    intc_plic.c)
 zephyr_library_sources_ifdef(CONFIG_RISCV_APLIC_DIRECT      intc_aplic.c)
 zephyr_library_sources_ifdef(CONFIG_RISCV_IMSIC             intc_imsic.c)
+zephyr_library_sources_ifdef(CONFIG_RISCV_AIA               intc_aia.c)
+zephyr_library_sources_ifdef(CONFIG_RISCV_APLIC_DIRECT      intc_shared.c)
 zephyr_library_sources_ifdef(CONFIG_RV32M1_INTMUX           intc_rv32m1_intmux.c)
 zephyr_library_sources_ifdef(CONFIG_SAM0_EIC                intc_sam0_eic.c)
 zephyr_library_sources_ifdef(CONFIG_SHARED_IRQ              intc_shared_irq.c)
@@ -63,3 +65,4 @@ if(CONFIG_PLIC_SHELL)
 endif()
 
 zephyr_library_include_directories(${ZEPHYR_BASE}/arch/common/include)
+

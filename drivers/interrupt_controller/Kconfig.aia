@@ -1,0 +1,203 @@
+# RISC-V AIA (Advanced Interrupt Architecture) driver configuration
+
+config RISCV_AIA
+	bool "RISC-V AIA (Advanced Interrupt Architecture) driver"
+	depends on RISCV
+	help
+	  This option enables the RISC-V AIA (Advanced Interrupt Architecture)
+	  combined driver that handles both APLIC and IMSIC controllers.
+
+	  The AIA driver provides a unified interface for managing interrupts
+	  in RISC-V systems that implement the Advanced Interrupt Architecture.
+	  It automatically routes interrupts to the appropriate controller
+	  (APLIC for peripheral interrupts, IMSIC for MSI interrupts).
+
+	  Say Y if you want to use the RISC-V AIA driver.
+
+if RISCV_AIA
+
+config RISCV_AIA_INIT_PRIORITY
+	int "AIA driver initialization priority"
+	default 50
+	range 0 99
+	help
+	  Device driver initialization priority for the RISC-V AIA driver.
+	  The AIA driver should be initialized after the individual APLIC
+	  and IMSIC drivers, but before other drivers that depend on it.
+
+config RISCV_AIA_MAX_SOURCES
+	int "Maximum number of interrupt sources"
+	default 1024
+	range 1 1024
+	help
+	  Maximum number of interrupt sources supported by the AIA driver.
+	  This includes both APLIC peripheral interrupts and IMSIC MSI interrupts.
+
+config RISCV_AIA_MAX_PRIORITY
+	int "Maximum interrupt priority level"
+	default 7
+	range 1 255
+	help
+	  Maximum interrupt priority level supported by the AIA driver.
+	  This value should match the maximum priority supported by both
+	  APLIC and IMSIC controllers.
+
+config RISCV_AIA_MAX_HARTS
+	int "Maximum number of harts supported"
+	default 4
+	range 1 8
+	help
+	  Maximum number of harts (hardware threads) supported by the AIA driver.
+	  This value should match the number of harts in your RISC-V system.
+
+config RISCV_AIA_MAX_GUESTS
+	int "Maximum number of guests supported"
+	default 1
+	range 1 8
+	help
+	  Maximum number of guests supported by the AIA driver.
+	  This value should match the virtualization capabilities of your system.
+
+config RISCV_AIA_MSI_MODE_SUPPORT
+	bool "Enable MSI mode support"
+	default y
+	help
+	  This option enables support for Message Signaled Interrupts (MSI)
+	  in the AIA driver. MSI mode allows interrupts to be sent as messages
+	  to specific harts and guests.
+
+	  Say Y if you want to use MSI mode for interrupt delivery.
+
+config RISCV_AIA_DIRECT_MODE_SUPPORT
+	bool "Enable direct mode support"
+	default y
+	help
+	  This option enables support for direct interrupt delivery mode
+	  in the AIA driver. Direct mode allows interrupts to be delivered
+	  directly to harts without using MSI messages.
+
+	  Say Y if you want to use direct mode for interrupt delivery.
+
+config RISCV_AIA_DEBUG
+	bool "Enable AIA driver debug output"
+	default n
+	help
+	  This option enables debug output from the AIA driver, including
+	  detailed logging of interrupt routing and controller operations.
+
+	  Say Y if you want to debug the AIA driver or see detailed
+	  information about interrupt handling.
+
+config RISCV_AIA_STATISTICS
+	bool "Enable AIA driver statistics"
+	default y
+	help
+	  This option enables statistics collection in the AIA driver,
+	  including counts of interrupts handled, MSI messages sent,
+	  and error conditions encountered.
+
+	  Say Y if you want to collect performance and usage statistics
+	  from the AIA driver.
+
+endif # RISCV_AIA
+
+config RISCV_AIA
+	bool "RISC-V AIA (Advanced Interrupt Architecture) driver"
+	depends on RISCV
+	help
+	  This option enables the RISC-V AIA (Advanced Interrupt Architecture)
+	  combined driver that handles both APLIC and IMSIC controllers.
+
+	  The AIA driver provides a unified interface for managing interrupts
+	  in RISC-V systems that implement the Advanced Interrupt Architecture.
+	  It automatically routes interrupts to the appropriate controller
+	  (APLIC for peripheral interrupts, IMSIC for MSI interrupts).
+
+	  Say Y if you want to use the RISC-V AIA driver.
+
+if RISCV_AIA
+
+config RISCV_AIA_INIT_PRIORITY
+	int "AIA driver initialization priority"
+	default 50
+	range 0 99
+	help
+	  Device driver initialization priority for the RISC-V AIA driver.
+	  The AIA driver should be initialized after the individual APLIC
+	  and IMSIC drivers, but before other drivers that depend on it.
+
+config RISCV_AIA_MAX_SOURCES
+	int "Maximum number of interrupt sources"
+	default 1024
+	range 1 1024
+	help
+	  Maximum number of interrupt sources supported by the AIA driver.
+	  This includes both APLIC peripheral interrupts and IMSIC MSI interrupts.
+
+config RISCV_AIA_MAX_PRIORITY
+	int "Maximum interrupt priority level"
+	default 7
+	range 1 255
+	help
+	  Maximum interrupt priority level supported by the AIA driver.
+	  This value should match the maximum priority supported by both
+	  APLIC and IMSIC controllers.
+
+config RISCV_AIA_MAX_HARTS
+	int "Maximum number of harts supported"
+	default 4
+	range 1 8
+	help
+	  Maximum number of harts (hardware threads) supported by the AIA driver.
+	  This value should match the number of harts in your RISC-V system.
+
+config RISCV_AIA_MAX_GUESTS
+	int "Maximum number of guests supported"
+	default 1
+	range 1 8
+	help
+	  Maximum number of guests supported by the AIA driver.
+	  This value should match the virtualization capabilities of your system.
+
+config RISCV_AIA_MSI_MODE_SUPPORT
+	bool "Enable MSI mode support"
+	default y
+	help
+	  This option enables support for Message Signaled Interrupts (MSI)
+	  in the AIA driver. MSI mode allows interrupts to be sent as messages
+	  to specific harts and guests.
+
+	  Say Y if you want to use MSI mode for interrupt delivery.
+
+config RISCV_AIA_DIRECT_MODE_SUPPORT
+	bool "Enable direct mode support"
+	default y
+	help
+	  This option enables support for direct interrupt delivery mode
+	  in the AIA driver. Direct mode allows interrupts to be delivered
+	  directly to harts without using MSI messages.
+
+	  Say Y if you want to use direct mode for interrupt delivery.
+
+config RISCV_AIA_DEBUG
+	bool "Enable AIA driver debug output"
+	default n
+	help
+	  This option enables debug output from the AIA driver, including
+	  detailed logging of interrupt routing and controller operations.
+
+	  Say Y if you want to debug the AIA driver or see detailed
+	  information about interrupt handling.
+
+config RISCV_AIA_STATISTICS
+	bool "Enable AIA driver statistics"
+	default y
+	help
+	  This option enables statistics collection in the AIA driver,
+	  including counts of interrupts handled, MSI messages sent,
+	  and error conditions encountered.
+
+	  Say Y if you want to collect performance and usage statistics
+	  from the AIA driver.
+
+endif # RISCV_AIA

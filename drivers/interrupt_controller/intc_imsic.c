@@ -12,12 +12,14 @@
  */
 
 #include <zephyr/kernel.h>
-#include <zephyr/arch/cpu.h>
 #include <zephyr/device.h>
-#include <zephyr/devicetree/interrupt_controller.h>
+#include <zephyr/init.h>
 #include <zephyr/irq.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/sys/util.h>
 #include <zephyr/drivers/interrupt_controller/riscv_imsic.h>
+#include <zephyr/drivers/interrupt_controller/riscv_aplic.h>
+#include "intc_shared.h"
 
 LOG_MODULE_REGISTER(imsic, CONFIG_INTC_LOG_LEVEL);
 
@@ -49,18 +51,21 @@ LOG_MODULE_REGISTER(imsic, CONFIG_INTC_LOG_LEVEL);
 #define IMSIC_LAST			IMSIC_EIE63
 
 /* Big-endian variants for big-endian systems */
-/* Note: These offsets are based on Linux kernel implementation
- * https://elixir.bootlin.com/linux/latest/source/drivers/irqchip/irq-riscv-imsic.c
- * 
- * The big-endian registers are typically accessed through a different
- * page offset in the IMSIC MMIO space.
+/* Note: These offsets are based on RISC-V AIA specification
+ * Big-endian registers are accessed through a different page offset
+ * in the IMSIC MMIO space (typically +0x100 for big-endian)
  */
-#define IMSIC_EIP0_BE          0x100
-#define IMSIC_EIP63_BE         0x13F
-#define IMSIC_EIE0_BE          0x140
-#define IMSIC_EIE63_BE         0x17F
-#define IMSIC_EIDELIVERY_BE    0x170
-#define IMSIC_EITHRESHOLD_BE   0x174
+#define IMSIC_MMIO_PAGE_BE_OFFSET	0x100
+
+/* Big-endian register addresses */
+#define IMSIC_EIDELIVERY_BE		(IMSIC_EIDELIVERY + IMSIC_MMIO_PAGE_BE_OFFSET)
+#define IMSIC_EITHRESHOLD_BE		(IMSIC_EITHRESHOLD + IMSIC_MMIO_PAGE_BE_OFFSET)
+#define IMSIC_EIP0_BE			(IMSIC_EIP0 + IMSIC_MMIO_PAGE_BE_OFFSET)
+#define IMSIC_EIP63_BE			(IMSIC_EIP63 + IMSIC_MMIO_PAGE_BE_OFFSET)
+#define IMSIC_EIE0_BE			(IMSIC_EIE0 + IMSIC_MMIO_PAGE_BE_OFFSET)
+#define IMSIC_EIE63_BE			(IMSIC_EIE63 + IMSIC_MMIO_PAGE_BE_OFFSET)
+
+
 
 /* IMSIC register bit fields */
 #define IMSIC_EIDELIVERY_MODE_MASK     0x3
@@ -99,12 +104,14 @@ struct imsic_data {
 	uint32_t eip_pending[2];   /* Interrupt pending masks for EIDs 0-63 */
 	uint32_t eithreshold;      /* Interrupt threshold */
 	uint32_t delivery_mode;    /* Current delivery mode */
+	uint32_t total_interrupts; /* Total interrupts processed */
+	uint32_t msi_interrupts;   /* MSI interrupts received */
+	uint32_t id_interrupts;    /* ID interrupts received */
+	uint32_t virtual_interrupts; /* Virtual interrupts received */
+	uint32_t threshold_rejected; /* Interrupts rejected due to threshold */
 };
 
 static const struct device *save_dev[CONFIG_MP_MAX_NUM_CPUS];
-
-/* Debug: Global variable to track if imsic_init was called */
-volatile uint32_t imsic_init_called = 0;
 
 /* Helper functions for register access */
 static inline uint32_t imsic_read(const struct device *dev, mem_addr_t addr)
@@ -114,6 +121,7 @@ static inline uint32_t imsic_read(const struct device *dev, mem_addr_t addr)
 
 static inline void imsic_write(const struct device *dev, mem_addr_t addr, uint32_t value)
 {
+	/* Write to IMSIC register */
 	*(volatile uint32_t *)addr = value;
 }
 
@@ -237,95 +245,123 @@ static inline void imsic_irq_clear_pending_internal(const struct device *dev, ui
 	imsic_write_be(dev, eip_addr, data->eip_pending[mask_index]);
 }
 
-/* Set delivery mode with proper error handling */
+/* Set delivery mode with simplified error handling */
 static inline int imsic_set_delivery_mode(const struct device *dev, uint32_t mode)
 {
 	struct imsic_data *data = dev->data;
 	const struct imsic_config *config = dev->config;
-	
+
 	if (mode > IMSIC_EIDELIVERY_MODE_VIRTUAL) {
 		return -EINVAL;
 	}
-	
+
 	data->delivery_mode = mode;
-	
-	/* Use MMIO like Linux kernel for standard IMSIC registers */
+
+	/* Prepare the value to write */
 	uint32_t value = (config->hart_id << IMSIC_EIDELIVERY_HARTID_SHIFT) |
 			 (config->guest_id << IMSIC_EIDELIVERY_GUESTID_SHIFT) |
 			 (mode << IMSIC_EIDELIVERY_EID_SHIFT);
-	
-	LOG_DBG("IMSIC: Setting delivery mode 0x%08X using MMIO", value);
-	
-	/* Write to hardware register using MMIO */
-	mem_addr_t delivery_addr = config->base + IMSIC_EIDELIVERY;
+
+	LOG_DBG("IMSIC: Setting delivery mode 0x%08X", value);
+
+	/* Write to hardware register using appropriate endianness */
+	mem_addr_t delivery_addr;
+	if (config->big_endian) {
+		delivery_addr = config->base + IMSIC_EIDELIVERY_BE;
+	} else {
+		delivery_addr = config->base + IMSIC_EIDELIVERY;
+	}
+
 	imsic_write_be(dev, delivery_addr, value);
-	
-	LOG_DBG("IMSIC: Delivery mode 0x%08X written to MMIO register 0x%08X", value, delivery_addr);
-	
+
+	/* Optional: Verify the write (without complex retry logic) */
+#ifdef CONFIG_RISCV_IMSIC_DEBUG
+	uint32_t verify_value = imsic_read_be(dev, delivery_addr);
+	if (verify_value != value) {
+		LOG_WRN("IMSIC: Delivery mode verification failed: wrote 0x%08X, read 0x%08X",
+			value, verify_value);
+	} else {
+		LOG_DBG("IMSIC: Delivery mode 0x%08X verified", value);
+	}
+#endif
+
 	return 0;
 }
 
-/* Set interrupt threshold with proper error handling */
+/* Set interrupt threshold with simplified error handling */
 static inline int imsic_set_threshold(const struct device *dev, uint32_t threshold)
 {
 	struct imsic_data *data = dev->data;
 	const struct imsic_config *config = dev->config;
-	
+
 	if (threshold > config->max_prio) {
 		return -EINVAL;
 	}
-	
+
 	data->eithreshold = threshold;
-	
-	/* Use MMIO like Linux kernel for standard IMSIC registers */
-	LOG_DBG("IMSIC: Setting threshold 0x%08X using MMIO", threshold);
-	
-	/* Write to hardware register using MMIO */
-	mem_addr_t threshold_addr = config->base + IMSIC_EITHRESHOLD;
+
+	LOG_DBG("IMSIC: Setting threshold 0x%08X", threshold);
+
+	/* Write to hardware register using appropriate endianness */
+	mem_addr_t threshold_addr;
+	if (config->big_endian) {
+		threshold_addr = config->base + IMSIC_EITHRESHOLD_BE;
+	} else {
+		threshold_addr = config->base + IMSIC_EITHRESHOLD;
+	}
+
 	imsic_write_be(dev, threshold_addr, threshold);
-	
-	LOG_DBG("IMSIC: Threshold 0x%08X written to MMIO register 0x%08X", threshold, threshold_addr);
-	
+
+	/* Optional: Verify the write (without complex retry logic) */
+#ifdef CONFIG_RISCV_IMSIC_DEBUG
+	uint32_t verify_value = imsic_read_be(dev, threshold_addr);
+	if (verify_value != threshold) {
+		LOG_WRN("IMSIC: Threshold verification failed: wrote 0x%08X, read 0x%08X",
+			threshold, verify_value);
+	} else {
+		LOG_DBG("IMSIC: Threshold 0x%08X verified", threshold);
+	}
+#endif
+
 	return 0;
 }
 
 /* IMSIC interrupt service routine */
+#if 0
 static void imsic_isr(const struct device *dev)
 {
 	struct imsic_data *data = dev->data;
-	
+
 	/* Check pending interrupts */
 	for (int i = 0; i < 2; i++) {
 		uint32_t pending = data->eip_pending[i] & data->eie_mask[i];
 		if (pending != 0) {
 			/* Find highest priority pending interrupt */
 			uint32_t eid = i * 32 + 31 - __builtin_clz(pending);
-			
+
 			/* Check if interrupt priority is above threshold */
 			if (eid >= data->eithreshold) {
 				/* Handle the interrupt */
-				LOG_DBG("IMSIC: Handling EID %u", eid);
-				
+				/* printk("IMSIC: Handling EID %u\n", eid); */
+
 				/* Clear pending bit */
 				imsic_irq_clear_pending_internal(dev, eid);
-				
+
 				/* Call registered ISR if available */
 				// TODO: Implement ISR table lookup
 			}
 		}
 	}
 }
+#endif
 
 /* Device initialization */
 static int imsic_init(const struct device *dev)
 {
 	const struct imsic_config *config = dev->config;
 	struct imsic_data *data = dev->data;
-	
-	/* Set debug flag */
-	imsic_init_called = 0xDEADBEEF;
-	
-	LOG_INF("IMSIC: Initializing device %s, base=0x%08lX, hart_id=%u", 
+
+	LOG_INF("IMSIC: Initializing device %s, base=0x%08lX, hart_id=%u",
 		dev->name ? dev->name : "NULL", config->base, config->hart_id);
 	
 	/* Initialize data structures */
@@ -335,6 +371,7 @@ static int imsic_init(const struct device *dev)
 	data->eip_pending[1] = 0;
 	data->eithreshold = 0;
 	data->delivery_mode = IMSIC_EIDELIVERY_MODE_OFF;
+	data->total_interrupts = 0;
 	
 	/* Save device reference for all harts to enable SMP access */
 	for (int i = 0; i < CONFIG_MP_MAX_NUM_CPUS; i++) {
@@ -342,23 +379,203 @@ static int imsic_init(const struct device *dev)
 	}
 	
 	/* Configure delivery mode to MSI */
+	data->delivery_mode = IMSIC_EIDELIVERY_MODE_MSI;
+	data->eithreshold = 0;
+
+	/* Set delivery mode to MSI */
 	int result = imsic_set_delivery_mode(dev, IMSIC_EIDELIVERY_MODE_MSI);
 	if (result != 0) {
-		LOG_WRN("IMSIC: Failed to set delivery mode to MSI, continuing with software state");
+		LOG_WRN("IMSIC: Hardware delivery mode setting failed");
 	}
-	
+
 	/* Set threshold to 0 */
 	result = imsic_set_threshold(dev, 0);
 	if (result != 0) {
-		LOG_WRN("IMSIC: Failed to set threshold to 0, continuing with software state");
+		LOG_WRN("IMSIC: Hardware threshold setting failed");
 	}
-	
+
 	LOG_INF("IMSIC: Initialization completed successfully");
-	
+
 	return 0;
 }
 
-/* Device tree based configuration */
+/* ============================================================================
+ * Interrupt Handling Helper Functions
+ * ============================================================================ */
+
+/**
+ * @brief Read pending interrupts from IMSIC
+ */
+static uint32_t imsic_read_pending(const struct device *dev)
+{
+	const struct imsic_config *config = dev->config;
+	uint32_t pending = 0;
+	
+	/* Read pending bits from IMSIC registers */
+	/* This is a simplified implementation - in reality you'd read from specific registers */
+	pending = imsic_read(dev, config->base + IMSIC_EIP0);
+	
+	return pending & 0xFFFFFFFF; /* Return lower 32 bits */
+}
+
+/**
+ * @brief Handle a single IMSIC interrupt
+ */
+static void imsic_handle_single_interrupt(const struct device *dev, uint32_t eid)
+{
+	struct imsic_data *data = dev->data;
+	
+	if (dev == NULL || data == NULL) {
+		return;
+	}
+	
+	/* 1. Check if the interrupt is enabled */
+	if (riscv_imsic_irq_is_enabled(eid) <= 0) {
+		LOG_DBG("IMSIC: EID %u not enabled, ignoring", eid);
+		return;
+	}
+	
+	/* 2. Check the delivery mode */
+	enum riscv_imsic_delivery_mode delivery_mode = riscv_imsic_get_delivery_mode();
+	LOG_DBG("IMSIC: Handling EID %u in delivery mode %d", eid, delivery_mode);
+	
+	/* 3. Route to the appropriate target based on delivery mode */
+	switch (delivery_mode) {
+	case RISCV_IMSIC_DELIVERY_MODE_MSI:
+		/* MSI mode: Process MSI interrupt */
+		LOG_DBG("IMSIC: MSI mode - processing EID %u", eid);
+		
+		/* Check if there's a registered ISR for this EID */
+		if (eid < CONFIG_NUM_IRQS) {
+			const struct _isr_table_entry *entry = &_sw_isr_table[eid];
+			if (entry->isr != NULL) {
+				/* Call the registered interrupt service routine */
+				entry->isr(entry->arg);
+				LOG_DBG("IMSIC: Called ISR for EID %u", eid);
+				
+				/* Update MSI interrupt statistics */
+				k_spinlock_key_t key = k_spin_lock(&data->lock);
+				data->msi_interrupts++;
+				k_spin_unlock(&data->lock, key);
+			} else {
+				LOG_WRN("IMSIC: No ISR registered for EID %u", eid);
+			}
+		}
+		break;
+		
+	case RISCV_IMSIC_DELIVERY_MODE_ID:
+		/* ID mode: Process ID-based interrupt */
+		LOG_DBG("IMSIC: ID mode - processing EID %u", eid);
+		
+		/* ID mode typically handles system-level interrupts */
+		/* Check if there's a registered ISR for this EID */
+		if (eid < CONFIG_NUM_IRQS) {
+			const struct _isr_table_entry *entry = &_sw_isr_table[eid];
+			if (entry->isr != NULL) {
+				entry->isr(entry->arg);
+				LOG_DBG("IMSIC: Called ID ISR for EID %u", eid);
+				
+				/* Update ID interrupt statistics */
+				k_spinlock_key_t key = k_spin_lock(&data->lock);
+				data->id_interrupts++;
+				k_spin_unlock(&data->lock, key);
+			}
+		}
+		break;
+		
+	case RISCV_IMSIC_DELIVERY_MODE_VIRTUAL:
+		/* Virtual mode: Process virtual interrupt */
+		LOG_DBG("IMSIC: Virtual mode - processing EID %u", eid);
+		
+		/* Virtual mode handles guest-level interrupts */
+		if (eid < CONFIG_NUM_IRQS) {
+			const struct _isr_table_entry *entry = &_sw_isr_table[eid];
+			if (entry->isr != NULL) {
+				entry->isr(entry->arg);
+				LOG_DBG("IMSIC: Called virtual ISR for EID %u", eid);
+				
+				/* Update virtual interrupt statistics */
+				k_spinlock_key_t key = k_spin_lock(&data->lock);
+				data->virtual_interrupts++;
+				k_spin_unlock(&data->lock, key);
+			}
+		}
+		break;
+		
+	case RISCV_IMSIC_DELIVERY_MODE_OFF:
+	default:
+		LOG_WRN("IMSIC: EID %u in invalid delivery mode %d", eid, delivery_mode);
+		return;
+	}
+	
+	/* 4. Clear the interrupt source */
+	/* IMSIC interrupts are typically cleared by reading the EIP register */
+	/* But we can also explicitly clear them */
+	riscv_imsic_irq_clear_pending(eid);
+	
+	/* Update general interrupt statistics */
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	data->total_interrupts++;
+	k_spin_unlock(&data->lock, key);
+	
+	/* Check threshold and update threshold statistics if needed */
+	uint32_t current_threshold = riscv_imsic_get_threshold();
+	if (eid < current_threshold) {
+		key = k_spin_lock(&data->lock);
+		data->threshold_rejected++;
+		k_spin_unlock(&data->lock, key);
+		LOG_DBG("IMSIC: EID %u rejected due to threshold %u", eid, current_threshold);
+	}
+	
+	LOG_DBG("IMSIC: Successfully handled interrupt EID %u in mode %d", eid, delivery_mode);
+}
+
+/* ============================================================================
+ * Interrupt Handling
+ * ============================================================================ */
+
+/**
+ * @brief IMSIC interrupt service routine
+ */
+static void imsic_isr(const void *arg)
+{
+	const struct device *dev = arg;
+	struct imsic_data *data = dev->data;
+	
+	if (dev == NULL || data == NULL) {
+		/* Cannot use LOG_ERR in ISR context */
+		return;
+	}
+	
+	/* Check if IMSIC has pending interrupts */
+	uint32_t pending = imsic_read_pending(dev);
+	if (pending) {
+		/* Process pending interrupts */
+		for (int i = 0; i < 32 && pending; i++) {
+			if (pending & BIT(i)) {
+				/* Clear pending bit */
+				pending &= ~BIT(i);
+				
+				/* Handle interrupt i */
+				imsic_handle_single_interrupt(dev, i);
+			}
+		}
+		
+		/* Update statistics */
+		data->total_interrupts++;
+	}
+}
+
+/* ============================================================================
+ * Global Variables for Conditional Registration
+ * ============================================================================ */
+
+/* Global variable to track if external IRQ is already registered */
+static unsigned int imsic_parent_irq = 0;
+
+/* ============================================================================
+ * Device tree based configuration
+ * ============================================================================ */
 #define IMSIC_INIT(n) \
 	static void imsic_irq_config_func_##n(void); \
 	\
@@ -380,18 +597,17 @@ static int imsic_init(const struct device *dev)
 			      PRE_KERNEL_1, CONFIG_INTC_INIT_PRIORITY, NULL); \
 	\
 	static void imsic_irq_config_func_##n(void) \
-	{ \
-		IRQ_CONNECT(DT_INST_IRQN(n), 0, imsic_isr, DEVICE_DT_INST_GET(n), 0); \
-		irq_enable(DT_INST_IRQN(n)); \
-	}
+{ \
+    /* CRITICAL: IMSIC interrupts are handled by shared_ext_isr */ \
+    /* APLIC already registered shared_ext_isr to handle both APLIC and IMSIC */ \
+    /* IMSIC should NOT register its own handler to avoid conflicts */ \
+    /* But we still need to configure the parent IRQ for proper routing */ \
+    printk("IMSIC: Using shared interrupt handler, not registering separate handler\n"); \
+    printk("IMSIC: Parent IRQ configured as RISCV_IRQ_MEXT (%d)\n", RISCV_IRQ_MEXT); \
+}
 
 /* Generate device instances from device tree */
 DT_INST_FOREACH_STATUS_OKAY(IMSIC_INIT)
-
-/* Debug: Check if we have any instances */
-#if CONFIG_RISCV_IMSIC_DEBUG
-#pragma message "IMSIC: Generating device instances..."
-#endif
 
 /* ============================================================================
  * Public API Functions
@@ -526,14 +742,26 @@ int riscv_imsic_get_guest_id(const struct device *dev)
 /* MSI specific functions */
 int riscv_imsic_send_msi(uint32_t target_hart, uint32_t target_guest, uint32_t eid)
 {
-	/* This function would typically be implemented by the APLIC driver
-	 * when in MSI mode, as the IMSIC only receives MSIs.
-	 * For now, we return -ENOTSUP to indicate this is not implemented. */
-	ARG_UNUSED(target_hart);
-	ARG_UNUSED(target_guest);
-	ARG_UNUSED(eid);
+	/* IMSIC itself cannot send MSIs - it only receives them
+	 * We need to use APLIC to send MSI interrupts to IMSIC */
+	const struct device *aplic_dev = riscv_aplic_get_dev();
 	
-	return -ENOTSUP;
+	if (aplic_dev == NULL) {
+		return -ENODEV;
+	}
+	
+	/* Check if APLIC supports MSI mode */
+	if (!riscv_aplic_is_msi_mode_enabled()) {
+		return -ENOTSUP;
+	}
+	
+	/* Validate parameters */
+	if (eid > 63 || target_hart >= CONFIG_MP_MAX_NUM_CPUS) {
+		return -EINVAL;
+	}
+	
+	/* Use APLIC to send MSI to the target hart/guest */
+	return riscv_aplic_send_msi(target_hart, target_guest, eid);
 }
 
 int riscv_imsic_receive_msi(uint32_t eid, uint32_t *source_hart, uint32_t *source_guest)
@@ -566,17 +794,38 @@ int riscv_imsic_get_stats(struct riscv_imsic_stats *stats)
 		return -EINVAL;
 	}
 	
-	/* For now, return basic statistics */
-	stats->total_interrupts = 0;
-	stats->msi_interrupts = 0;
-	stats->id_interrupts = 0;
-	stats->virtual_interrupts = 0;
-	stats->threshold_rejected = 0;
+	struct imsic_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	
+	/* Return real statistics from the device data */
+	stats->total_interrupts = data->total_interrupts;
+	stats->msi_interrupts = data->msi_interrupts;
+	stats->id_interrupts = data->id_interrupts;
+	stats->virtual_interrupts = data->virtual_interrupts;
+	stats->threshold_rejected = data->threshold_rejected;
+	
+	k_spin_unlock(&data->lock, key);
 	
 	return 0;
 }
 
 void riscv_imsic_reset_stats(void)
 {
-	/* For now, no statistics to reset */
+	const struct device *dev = imsic_get_dev();
+	
+	if (dev == NULL) {
+		return;
+	}
+	
+	struct imsic_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->lock);
+	
+	/* Reset all statistics to zero */
+	data->total_interrupts = 0;
+	data->msi_interrupts = 0;
+	data->id_interrupts = 0;
+	data->virtual_interrupts = 0;
+	data->threshold_rejected = 0;
+	
+	k_spin_unlock(&data->lock, key);
 }

@@ -47,6 +47,7 @@ struct riscv_aplic_irq_stats {
 
 int riscv_aplic_get_irq_stats(uint32_t irq, struct riscv_aplic_irq_stats *stats);
 uint32_t riscv_aplic_get_total_interrupts(void);
+uint32_t riscv_aplic_get_msi_interrupts_sent(void);
 void riscv_aplic_reset_stats(void);
 
 /* Debug: Global variable to check if aplic_init was called */

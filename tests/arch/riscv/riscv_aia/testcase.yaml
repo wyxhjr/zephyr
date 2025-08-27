@@ -1,0 +1,23 @@
+tests:
+  arch.riscv.aia:
+    build_only: true
+    platform_allow:
+      - qemu_riscv64
+      - qemu_riscv32
+      - hifive1_revb
+      - hifive_unleashed
+    skip: true
+    tags:
+      - arch
+      - riscv
+      - aia
+      - interrupt_controller
+    integration_platforms:
+      - qemu_riscv64
+    harness: ztest
+    harness_config:
+      fixture: gpio_loopback
+      min_flash: 128
+      min_ram: 64
+
+
